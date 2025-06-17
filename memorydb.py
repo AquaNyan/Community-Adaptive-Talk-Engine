@@ -208,7 +208,7 @@ class DatabaseManager:
                             warning_count = COALESCE(?, warning_count),
                             ignore = COALESCE(?, ignore)
                         WHERE user_id = ?
-                    ''', (user_name, nickname, birthday, note, api_key, user_id, warning_count, ignore))
+                    ''', (user_name, nickname, birthday, note, api_key, warning_count, ignore, user_id))
                     conn.commit()
                     return f"已更新使用者 {user_id}"
                 else:
@@ -287,7 +287,7 @@ class DatabaseManager:
             with self._connect() as conn:
                 conn: sqlite3.Connection
                 c = conn.cursor()
-                c.execute("SELECT api_key FROM servers WHERE user_id = ?", (server_id,))
+                c.execute("SELECT api_key FROM servers WHERE server_id = ?", (server_id,))
                 row = c.fetchone()
                 if row:
                     return row[0]
@@ -566,7 +566,7 @@ if __name__ == '__main__':
         content='這是頻道的記憶內容。'
     )
 
-    # print(db.get_api_key(111111111111111112))
+    # print(db.get_user_api_key(111111111111111112))
     # print(db.get_user(111111111111111114))
     # print(db.get_user_and_memories(111111111111111114))
     # print(db.get_channel(111111111111111114))
