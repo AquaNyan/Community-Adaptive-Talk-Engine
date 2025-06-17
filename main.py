@@ -7,28 +7,16 @@ from google.genai import types
 import asyncio
 import random
 import json, time
+from config import load_config
 from datetime import datetime, timedelta
 from typing import Optional
 from memorydb import DatabaseManager
 
 print("import完成")
 print("開始讀取設定")
-try:
-    with open("Config.json", "r") as f:
-        CONFIG = json.load(f)
-        if CONFIG['Discord_Bot_Token'] == 'YOURTOKEN' or CONFIG['Discord_Bot_Token'] == None \
-            or CONFIG['Gemini_Token'] == 'YOURTOKEN' or CONFIG['Gemini_Token'] == None:
-            raise Exception("請至Config.json檔案設定正確的內容")
-except FileNotFoundError:
-    with open("Config.json", "w") as f:
-        json.dump({'Discord_Bot_Token': 'YOURTOKEN',
-                   'Gemini_Token': 'YOURTOKEN',
-                   'Your_Discord_Id': "0",
-                   'Memory_Channel':""
-                   }, f, indent=4)
-    raise Exception("找不到Config.json... 我把它放到資料夾裡了，請去設定它的內容! (第一次執行會這樣很正常)")
-except json.decoder.JSONDecodeError:
-    print('file empty')
+CONFIG = load_config()
+if CONFIG['Discord_Bot_Token'] in ('YOURTOKEN', None) or CONFIG['Gemini_Token'] in ('YOURTOKEN', None):
+    raise Exception("請設定 DISCORD_BOT_TOKEN 及 GEMINI_TOKEN 環境變數或在 Config.json 中提供正確的內容")
 
 print("載入聊天頻道清單")
 try:
