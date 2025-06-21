@@ -160,6 +160,37 @@ async def get_long_term_memory() -> str:
     msg = str(messages)+'[以上為先前整理的記憶,已登入準備聊天]'
     return msg
 
+#define function
+store_important_memory = {
+                    "name": "store_important_memory",
+                    "description": "將需要長期保存的資訊或對話存入記憶，例如重要事件、關鍵訊息或用戶需求，並根據範圍（使用者、頻道或伺服器）選擇適當的存儲方式。",
+                    "parameters": {
+                        "type": "object",
+                        "properties": {
+                            "scope": {
+                                "type": "string",
+                                "enum": ["user", "channel", "server"],
+                                "description": "選擇存儲範圍：使用者、頻道或伺服器"
+                            },
+                            "content": {
+                                "type": "string",
+                                "description": "要存儲的內容"
+                            }
+                        },
+                        "required": ["scope", "content"]
+                    }
+                }
+
+def add_important_memory(scope: str, content: str):
+                    """將重要記憶存入資料庫"""
+                    # if scope == "user":
+                    #     db.add_user_memory(message.author.id, content)
+                    # elif scope == "channel":
+                    #     db.add_channel_memory(message.channel.id, content)
+                    # elif scope == "server" and message.guild:
+                    #     db.add_server_memory(message.guild.id, content)
+                    print(f"已儲存重要記憶：{scope} - {content}")
+
 
 
 # 定義一個函數來處理訊息並回覆
@@ -223,28 +254,8 @@ async def on_message(message: discord.Message):
                 # AI 回覆
                 client = genai.Client(api_key=CONFIG['Gemini_Token'])
                 model = "gemini-2.5-flash-preview-05-20"
-
-                store_important_memory = {
-                    "name": "store_important_memory",
-                    "description": "將需要長期保存的資訊或對話存入記憶，例如重要事件、關鍵訊息或用戶需求，並根據範圍（使用者、頻道或伺服器）選擇適當的存儲方式。",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "scope": {
-                                "type": "string",
-                                "enum": ["user", "channel", "server"],
-                                "description": "選擇存儲範圍：使用者、頻道或伺服器"
-                            },
-                            "content": {
-                                "type": "string",
-                                "description": "要存儲的內容"
-                            }
-                        },
-                        "required": ["scope", "content"]
-                    }
-                }
-
-                tools = [store_important_memory]
+                tools = [add_important_memory]
+                # config = types.GenerateContentConfig(tools=[tools])
 
                 generate_content_config = types.GenerateContentConfig(
                     tools=tools,
@@ -271,57 +282,79 @@ async def on_message(message: discord.Message):
                             types.Part.from_text(text=f"{msg['timestamp']} id={msg['author_id']} name={msg['name']}: {msg['content']}"),
                         ],
                     ))
-
-                # 分段累積
-                text_chunks = []
-                code_chunks = []
-                result_chunks = []
-
-                # Gemini API 呼叫
-                for chunk in client.models.generate_content_stream(
+                
+                #AI 生成內容
+                response = client.models.generate_content(
                     model=model,
                     contents=contents,
                     config=generate_content_config,
-                ):
-                    if (
-                        chunk.candidates is None
-                        or chunk.candidates[0].content is None
-                        or chunk.candidates[0].content.parts is None
-                    ):
-                        continue
+                )
 
-                    part = chunk.candidates[0].content.parts[0]
+                if response.candidates[0].content.parts[0].function_call:
+                    function_call = response.candidates[0].content.parts[0].function_call
+                    print(f"Function to call: {function_call.name}")
+                    print(f"Arguments: {function_call.args}")
+                    #  In a real app, you would call your function here:
+                    result = add_important_memory(**function_call.args)
+                    print(f"Function result: {result}")
+                    reply_text = response.text
+                else:
+                    print("No function call found in the response.")
+                    print(response.text)
+                    reply_text = response.text
 
-                    if part.text:
-                        print(part.text, end="", flush=True)
-                        text_chunks.append(part.text)
-                    if part.executable_code:
-                        print("\n[AI產生的程式碼]：\n", part.executable_code)
-                        code_chunks.append(part.executable_code)
-                    if part.code_execution_result:
-                        print("\n[程式執行結果]：\n", part.code_execution_result)
-                        result_chunks.append(part.code_execution_result)
+                await message.channel.send(reply_text if reply_text else "喵喵喵？我不知道該怎麼回答你喵！")           
+                
+
+                # # 分段累積
+                # text_chunks = []
+                # code_chunks = []
+                # result_chunks = []
+
+                # # Gemini API 呼叫
+                # for chunk in client.models.generate_content_stream(
+                #     model=model,
+                #     contents=contents,
+                #     config=generate_content_config,
+                # ):
+                #     if (
+                #         chunk.candidates is None
+                #         or chunk.candidates[0].content is None
+                #         or chunk.candidates[0].content.parts is None
+                #     ):
+                #         continue
+
+                #     part = chunk.candidates[0].content.parts[0]
+
+                #     if part.text:
+                #         print(part.text, end="", flush=True)
+                #         text_chunks.append(part.text)
+                #     if part.executable_code:
+                #         print("\n[AI產生的程式碼]：\n", part.executable_code)
+                #         code_chunks.append(part.executable_code)
+                #     if part.code_execution_result:
+                #         print("\n[程式執行結果]：\n", part.code_execution_result)
+                #         result_chunks.append(part.code_execution_result)
                         
-                    # 檢查是否有 tool 呼叫
-                    if chunk.candidates and chunk.candidates[0].content and chunk.candidates[0].content.tool_calls:
-                        for tool_call in chunk.candidates[0].content.tool_calls:
-                            if tool_call.name == "store_important_memory":
-                                params = tool_call.args  # 這裡依你的 SDK 可能是 .parameters 或 .args
-                                scope = params.get("scope")
-                                content = params.get("content")
-                                # 根據 scope 寫入對應資料庫
-                                if scope == "user":
-                                    db.add_user_memory(message.author.id, content)
-                                elif scope == "channel":
-                                    db.add_channel_memory(message.channel.id, content)
-                                elif scope == "server" and message.guild:
-                                    db.add_server_memory(message.guild.id, content)
-                                print(f"已儲存重要記憶：{scope} - {content}")
+                #     # 檢查是否有 tool 呼叫
+                #     if chunk.candidates and chunk.candidates[0].content and chunk.candidates[0].content.tool_calls:
+                #         for tool_call in chunk.candidates[0].content.tool_calls:
+                #             if tool_call.name == "store_important_memory":
+                #                 params = tool_call.args  # 這裡依你的 SDK 可能是 .parameters 或 .args
+                #                 scope = params.get("scope")
+                #                 content = params.get("content")
+                #                 # 根據 scope 寫入對應資料庫
+                #                 if scope == "user":
+                #                     db.add_user_memory(message.author.id, content)
+                #                 elif scope == "channel":
+                #                     db.add_channel_memory(message.channel.id, content)
+                #                 elif scope == "server" and message.guild:
+                #                     db.add_server_memory(message.guild.id, content)
+                #                 print(f"已儲存重要記憶：{scope} - {content}")
 
-                # 將結果組合成回覆
-                if text_chunks:
-                    reply_text = "".join(text_chunks)
-                    await message.channel.send(reply_text)
+                # # 將結果組合成回覆
+                # if text_chunks:
+                #     reply_text = "".join(text_chunks)
 
 
 
