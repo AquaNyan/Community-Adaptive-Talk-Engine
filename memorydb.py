@@ -573,3 +573,4 @@ if __name__ == '__main__':
     # print(db.get_server(111111111111111114))
     user_ids = [111111111111111112, 111111111111111114]
     print(db.get_users_memories_from_list(user_ids))
+    
