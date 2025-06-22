@@ -161,37 +161,52 @@ async def get_long_term_memory() -> str:
     return msg
 
 #define function
-store_important_memory = {
-                    "name": "store_important_memory",
-                    "description": "將需要長期保存的資訊或對話存入記憶，例如重要事件、關鍵訊息或用戶需求，並根據範圍（使用者、頻道或伺服器）選擇適當的存儲方式。",
-                    "parameters": {
-                        "type": "object",
-                        "properties": {
-                            "scope": {
-                                "type": "string",
-                                "enum": ["user", "channel", "server"],
-                                "description": "選擇存儲範圍：使用者、頻道或伺服器"
-                            },
-                            "content": {
-                                "type": "string",
-                                "description": "要存儲的內容"
-                            }
-                        },
-                        "required": ["scope", "content"]
-                    }
-                }
+add_important_memory_declatation = {
+    "name": "add_important_memory",
+    "description": "將需要長期保存的資訊或對話存入記憶，例如重要事件、關鍵訊息或用戶需求，並根據範圍（使用者、頻道或伺服器）選擇適當的存儲方式。",
+    "parameters": {
+        "type": "object",
+        "properties": {
+            "scope": {
+                "type": "string",
+                "enum": ["user", "channel", "server"],
+                "description": "選擇存儲範圍：使用者、頻道或伺服器"
+            },
+            "content": {
+                "type": "string",
+                "description": "要存儲的內容"
+            }
+        },
+        "required": ["scope", "content"]
+    }
+}
 
-def add_important_memory(scope: str, content: str):
-                    """將重要記憶存入資料庫"""
-                    # if scope == "user":
-                    #     db.add_user_memory(message.author.id, content)
-                    # elif scope == "channel":
-                    #     db.add_channel_memory(message.channel.id, content)
-                    # elif scope == "server" and message.guild:
-                    #     db.add_server_memory(message.guild.id, content)
-                    print(f"已儲存重要記憶：{scope} - {content}")
-
-
+def add_important_memory(message:discord.Message ,scope: str, content: str) -> str:
+    """將需要長期保存的資訊或對話存入記憶，例如重要事件、關鍵訊息或用戶需求，並根據範圍（使用者、頻道或伺服器）選擇適當的存儲方式。
+    
+    Args:
+        scope (str): 存儲範圍，可以是 "user", "channel" 或 "server"。
+        content (str): 要存儲的內容。
+    
+    Returns:
+        儲存結果的訊息，成功或失敗的提示。
+    """
+    if scope not in ["user", "channel", "server"]:
+        return "無效的範圍選擇，請選擇 'user', 'channel' 或 'server'。"
+    if not content:
+        return "內容不能為空，請提供要儲存的內容。"
+    try:
+        if scope == "user":
+            db.add_user_memory(message.author.id, content)
+        elif scope == "channel":
+            db.add_channel_memory(message.channel.id, content)
+        elif scope == "server" and message.guild:
+            db.add_server_memory(message.guild.id, content)
+        print(f"已儲存重要記憶：{scope} - {content}")
+        return f"{content} 記住了喵！"
+    except Exception as e:
+        print(f"儲存記憶時發生錯誤: {e}")
+        return f"喵了個咪儲存記憶出錯啦: {e}"
 
 # 定義一個函數來處理訊息並回覆
 @bot.event
@@ -250,19 +265,6 @@ async def on_message(message: discord.Message):
 
                 memory = f'server memories:\n{servermem}\nchannel memories:\n{channelmem}\nuser memories:\n{usermem}'
 
-
-                # AI 回覆
-                client = genai.Client(api_key=CONFIG['Gemini_Token'])
-                model = "gemini-2.5-flash-preview-05-20"
-                tools = [add_important_memory]
-                # config = types.GenerateContentConfig(tools=[tools])
-
-                generate_content_config = types.GenerateContentConfig(
-                    tools=tools,
-                    system_instruction="你是個年齡不確定的貓娘,主要用正體中文,名字是CaTe像貓並參考元素表,身高130cm體重30kg,AquaNya是維護者,已使用帳號{bot.users}接入discord聊天,你將會收到許多資訊,回覆時不需包含這些格式,只需要針對用戶所說進行簡短對話。可以將重要的事情用Tool存下來。需要呼叫用戶時用 <@id> 。",
-                    response_mime_type="text/plain",
-                )
-
                 contents = []
                 contents.append(
                     types.Content(
@@ -275,14 +277,24 @@ async def on_message(message: discord.Message):
 
                 for msg in conv.history:
                     role = "model" if msg['author_id'] == bot.user.id else "user"
+                    text = f"{msg['content']}" if msg['author_id'] == bot.user.id else f"{msg['timestamp']} id={msg['author_id']} name={msg['name']}: {msg['content']}"
                     contents.append(
                         types.Content(
                         role=role,
                         parts=[
-                            types.Part.from_text(text=f"{msg['timestamp']} id={msg['author_id']} name={msg['name']}: {msg['content']}"),
+                            types.Part.from_text(text=text),
                         ],
                     ))
                 
+                # AI 回覆
+                client = genai.Client(api_key=CONFIG['Gemini_Token'])
+                model = "gemini-2.5-flash-preview-05-20"
+                generate_content_config = types.GenerateContentConfig(
+                    tools=[types.Tool(function_declarations=[add_important_memory_declatation])],
+                    system_instruction="你是個年齡不確定的貓娘,主要用正體中文,名字是CaTe像貓並參考元素表,身高130cm體重30kg,AquaNya是維護者,已使用帳號{bot.users}接入discord聊天,你將會收到許多資訊,回覆時不需包含這些格式,只需要針對用戶所說進行簡短對話。可以將重要的事情用Tool存下來。需要呼叫用戶時用 <@id> 。",
+                    response_mime_type="text/plain",
+                )
+
                 #AI 生成內容
                 response = client.models.generate_content(
                     model=model,
@@ -295,9 +307,13 @@ async def on_message(message: discord.Message):
                     print(f"Function to call: {function_call.name}")
                     print(f"Arguments: {function_call.args}")
                     #  In a real app, you would call your function here:
-                    result = add_important_memory(**function_call.args)
-                    print(f"Function result: {result}")
-                    reply_text = response.text
+                    if function_call.name == "add_important_memory":
+                        scope = function_call.args.get("scope")
+                        content = function_call.args.get("content")
+                        reply_text = add_important_memory(message, scope, content)
+                    else:
+                        print(f"未知的函數呼叫: {function_call.name}")
+                        reply_text = f"未知的函數呼叫: {function_call.name}"
                 else:
                     print("No function call found in the response.")
                     print(response.text)
