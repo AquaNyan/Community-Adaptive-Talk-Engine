@@ -54,6 +54,12 @@ def is_admin_or_owner(interaction: discord.Interaction):
         return True
     return False
 
+# 將可能過長的訊息切割後傳送
+max_dc_msg_length = 2000
+async def send_in_chunks(channel: discord.abc.Messageable, text: str, chunk_size: int = max_dc_msg_length) -> None:
+    for i in range(0, len(text), chunk_size):
+        await channel.send(text[i:i + chunk_size])
+
 # 讀取 Discord Bot Token
 TOKEN = CONFIG['Discord_Bot_Token']
 intents = discord.Intents.default()
@@ -319,7 +325,10 @@ async def on_message(message: discord.Message):
                     print(response.text)
                     reply_text = response.text
 
-                await message.channel.send(reply_text if reply_text else "喵喵喵？我不知道該怎麼回答你喵！")           
+                if reply_text:
+                    await send_in_chunks(message.channel, reply_text)
+                else:
+                    await message.channel.send("喵喵喵？我不知道該怎麼回答喵！")           
                 
 
                 # # 分段累積
