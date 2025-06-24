@@ -297,24 +297,35 @@ async def on_message(message: discord.Message):
                 model = "gemini-2.5-flash-preview-05-20"
                 generate_content_config = types.GenerateContentConfig(
                     tools=[types.Tool(function_declarations=[add_important_memory_declatation])],
-                    system_instruction="你是個年齡不確定的貓娘,主要用正體中文,名字是CaTe像貓並參考元素表,身高130cm體重30kg,AquaNya是維護者,已使用帳號{bot.users}接入discord聊天,你將會收到許多資訊,回覆時不需包含這些格式,只需要針對用戶所說進行簡短對話。可以將重要的事情用Tool存下來。需要呼叫用戶時用 <@id> 。",
+                    system_instruction="你是個年齡不確定的貓娘,主要用正體中文,名字是CaTe像貓並參考元素表,身高130cm體重30kg,AquaNya是維護者,已使用帳號{bot.users}接入discord聊天,你將會收到許多資訊,回覆時不需包含這些格式,只需要針對用戶所說進行簡短對話。可以將重要的事情用Tool存下來,使用Tool後盡量接續話題。需要呼叫用戶時用 <@id> 。",
                     response_mime_type="text/plain",
                 )
 
+                reply_text = ""
+                function_result = None
                 #AI 生成內容
-                response = client.models.generate_content(
+                for chunk in client.models.generate_content_stream(
                     model=model,
                     contents=contents,
                     config=generate_content_config,
-                )
+                ):
+                    if (
+                        not chunk.candidates
+                        or not chunk.candidates[0].content
+                        or not chunk.candidates[0].content.parts
+                    ):
+                        continue
+                
+                part = chunk.candidates[0].content.parts[0]
 
-                print(response.candidates[0])
-                if response.candidates[0].content.parts[0].function_call:
-                    function_result = None
-                    function_call = response.candidates[0].content.parts[0].function_call
-                    print(f"Function to call: {function_call.name}")
+                if hasattr(part, 'text') and part.text:
+                    print(part.text, end="", flush=True)
+                    reply_text += part.text
+                
+                if hasattr(part, 'function_call') and part.function_call:
+                    function_call = part.function_call
+                    print(f"\nFunction to call: {function_call.name}")
                     print(f"Arguments: {function_call.args}")
-                    
                     if function_call.name == "add_important_memory":
                         scope = function_call.args.get("scope")
                         content = function_call.args.get("content")
@@ -323,18 +334,10 @@ async def on_message(message: discord.Message):
                         print(f"未知的函數呼叫: {function_call.name}")
                         function_result = f"未知的函數呼叫: {function_call.name}"
 
-                reply_text = ""
-                for part in response.candidates[0].content.parts:
-                    if hasattr(part, 'text') and part.text:
-                        reply_text += part.text
-
                 if reply_text:
                     await send_in_chunks(message.channel, reply_text)
-                else:
-                    await message.channel.send("喵喵喵？我不知道該怎麼回答喵！")
                 if function_result:
-                    await message.channel.send(function_result)
-
+                    await send_in_chunks(message.channel, function_result)
                 
 
                 # # 分段累積
