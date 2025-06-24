@@ -308,27 +308,33 @@ async def on_message(message: discord.Message):
                     config=generate_content_config,
                 )
 
+                print(response.candidates[0])
                 if response.candidates[0].content.parts[0].function_call:
+                    function_result = None
                     function_call = response.candidates[0].content.parts[0].function_call
                     print(f"Function to call: {function_call.name}")
                     print(f"Arguments: {function_call.args}")
-                    #  In a real app, you would call your function here:
+                    
                     if function_call.name == "add_important_memory":
                         scope = function_call.args.get("scope")
                         content = function_call.args.get("content")
-                        reply_text = add_important_memory(message, scope, content)
+                        function_result = add_important_memory(message, scope, content)
                     else:
                         print(f"未知的函數呼叫: {function_call.name}")
-                        reply_text = f"未知的函數呼叫: {function_call.name}"
-                else:
-                    print("No function call found in the response.")
-                    print(response.text)
-                    reply_text = response.text
+                        function_result = f"未知的函數呼叫: {function_call.name}"
+
+                reply_text = ""
+                for part in response.candidates[0].content.parts:
+                    if hasattr(part, 'text') and part.text:
+                        reply_text += part.text
 
                 if reply_text:
                     await send_in_chunks(message.channel, reply_text)
                 else:
-                    await message.channel.send("喵喵喵？我不知道該怎麼回答喵！")           
+                    await message.channel.send("喵喵喵？我不知道該怎麼回答喵！")
+                if function_result:
+                    await message.channel.send(function_result)
+
                 
 
                 # # 分段累積
