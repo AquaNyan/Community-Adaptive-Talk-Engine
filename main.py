@@ -277,6 +277,7 @@ async def on_message(message: discord.Message):
                         role="model",
                         parts=[
                             types.Part.from_text(text=f"\n{long_term_memory}\n\n{memory}"),
+                            # types.Part.from_text(text=f"\nmemory\n\n{memory}\n\n")
                         ],
                     )
                 )
@@ -300,8 +301,12 @@ async def on_message(message: discord.Message):
                     system_instruction="你是個年齡不確定的貓娘,主要用正體中文,名字是CaTe像貓並參考元素表,身高130cm體重30kg,AquaNya是維護者,已使用帳號{bot.users}接入discord聊天,你將會收到許多資訊,回覆時不需包含這些格式,只需要針對用戶所說進行簡短對話。可以將重要的事情用Tool存下來。需要呼叫用戶時用 <@id> 。",
                     response_mime_type="text/plain",
                 )
+                generate_content_config_text = types.GenerateContentConfig(
+                    system_instruction="你是個年齡不確定的貓娘,主要用正體中文,名字是CaTe像貓並參考元素表,身高130cm體重30kg,AquaNya是維護者,已使用帳號{bot.users}接入discord聊天,你將會收到許多資訊,回覆時不需包含這些格式,只需要針對用戶所說進行簡短對話。可以將重要的事情用Tool存下來。需要呼叫用戶時用 <@id> 。",
+                )
 
                 #AI 生成內容
+                print(contents)
                 response = client.models.generate_content(
                     model=model,
                     contents=contents,
@@ -317,6 +322,22 @@ async def on_message(message: discord.Message):
                         scope = function_call.args.get("scope")
                         content = function_call.args.get("content")
                         reply_text = add_important_memory(message, scope, content)
+                        print(f"Function call result: {reply_text}")
+                        contents.append(
+                            types.Content(
+                                role="model",
+                                parts=[
+                                    types.Part.from_text(text=reply_text),
+                                ],
+                            )
+                        )
+                        response = client.models.generate_content(
+                            model=model,
+                            contents=contents,
+                            config=generate_content_config_text,
+                        )
+                        reply_text = f'{reply_text}\n{response.text}'
+
                     else:
                         print(f"未知的函數呼叫: {function_call.name}")
                         reply_text = f"未知的函數呼叫: {function_call.name}"
@@ -330,59 +351,6 @@ async def on_message(message: discord.Message):
                 else:
                     await message.channel.send("喵喵喵？我不知道該怎麼回答喵！")           
                 
-
-                # # 分段累積
-                # text_chunks = []
-                # code_chunks = []
-                # result_chunks = []
-
-                # # Gemini API 呼叫
-                # for chunk in client.models.generate_content_stream(
-                #     model=model,
-                #     contents=contents,
-                #     config=generate_content_config,
-                # ):
-                #     if (
-                #         chunk.candidates is None
-                #         or chunk.candidates[0].content is None
-                #         or chunk.candidates[0].content.parts is None
-                #     ):
-                #         continue
-
-                #     part = chunk.candidates[0].content.parts[0]
-
-                #     if part.text:
-                #         print(part.text, end="", flush=True)
-                #         text_chunks.append(part.text)
-                #     if part.executable_code:
-                #         print("\n[AI產生的程式碼]：\n", part.executable_code)
-                #         code_chunks.append(part.executable_code)
-                #     if part.code_execution_result:
-                #         print("\n[程式執行結果]：\n", part.code_execution_result)
-                #         result_chunks.append(part.code_execution_result)
-                        
-                #     # 檢查是否有 tool 呼叫
-                #     if chunk.candidates and chunk.candidates[0].content and chunk.candidates[0].content.tool_calls:
-                #         for tool_call in chunk.candidates[0].content.tool_calls:
-                #             if tool_call.name == "store_important_memory":
-                #                 params = tool_call.args  # 這裡依你的 SDK 可能是 .parameters 或 .args
-                #                 scope = params.get("scope")
-                #                 content = params.get("content")
-                #                 # 根據 scope 寫入對應資料庫
-                #                 if scope == "user":
-                #                     db.add_user_memory(message.author.id, content)
-                #                 elif scope == "channel":
-                #                     db.add_channel_memory(message.channel.id, content)
-                #                 elif scope == "server" and message.guild:
-                #                     db.add_server_memory(message.guild.id, content)
-                #                 print(f"已儲存重要記憶：{scope} - {content}")
-
-                # # 將結果組合成回覆
-                # if text_chunks:
-                #     reply_text = "".join(text_chunks)
-
-
-
     except Exception as e:
         print(f"on_message 發生錯誤: {e}")
 
