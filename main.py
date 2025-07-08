@@ -68,6 +68,47 @@ intents.guilds = True
 intents.message_content = True
 bot = commands.Bot(command_prefix='cate:', intents=intents)
 
+global_contents: list = []  # 用於存儲訊息內容
+
+async def get_long_term_memory() -> str:   
+    channel = bot.get_channel(int(CONFIG['Memory_Channel']))
+    if channel:
+        messages = []
+        async for msg in channel.history(limit=100):
+            messages.append(msg.content)
+        print("長期記憶：")
+        for m in reversed(messages):  # 由舊到新
+            print(m)
+    else:
+        print("找不到指定頻道")
+    msg = str(messages)+'[以上為先前整理的記憶,已登入準備聊天]'
+    return msg
+
+# 整理並且新增長期記憶
+async def update_long_term_memory() -> None:
+    channel = bot.get_channel(int(CONFIG['Memory_Channel']))
+    if channel:
+        global_contents.append(
+            types.Content(
+                role="user",
+                parts=[
+                    types.Part.from_text(text=f"整理以上對話的摘要"),
+                ],
+            )
+        )
+        print(f"\n記憶:\n{global_contents}\n")
+        client = genai.Client(api_key=CONFIG['Gemini_Token'])
+        response = client.models.generate_content(
+            model="gemini-2.5-flash-preview-05-20",
+            contents=global_contents
+        )
+        await send_in_chunks(channel, response.text)
+        print(f"\n已新增長期記憶:\n{response.text}\n")
+        global_contents.clear()  # 清空全域內容
+    else:
+        print("找不到指定頻道")
+
+
 conversations = {}
 history_maxcount: int = 30
 class conversation:
@@ -258,7 +299,16 @@ async def on_message(message: discord.Message):
             async with message.channel.typing():
                 # 如果訊息提到了機器人或在自動聊天頻道中，則進行回覆
                 print(f"收到訊息: {message.content} (來自 {message.author})")
-            
+
+                global_contents.append(
+                    types.Content(
+                        role="user",
+                        parts=[
+                            types.Part.from_text(text=f"{(message.created_at + timedelta(hours=8)).strftime('%Y/%m/%d %a. %H:%M')} id={message.author.id} name={message.author.name} : {message.content}"),
+                        ],
+                    )
+                )
+
                 # 取得記憶
                 usermem = db.get_users_memories_from_list(conv.get_memusers_id()) if conv.get_memusers_id() else None
                 channelmem = db.get_channels_memories_from_list(conv.get_memchannels_id()) if conv.get_memchannels_id() else None
@@ -323,24 +373,29 @@ async def on_message(message: discord.Message):
                         content = function_call.args.get("content")
                         reply_text = add_important_memory(message, scope, content)
                         print(f"Function call result: {reply_text}")
-                        contents.append(
-                            types.Content(
-                                role="model",
-                                parts=[
-                                    types.Part.from_text(text=reply_text),
-                                ],
+                        try:
+                            contents.append(
+                                types.Content(
+                                    role="model",
+                                    parts=[
+                                        types.Part.from_text(text=reply_text),
+                                    ],
+                                )
                             )
-                        )
-                        response = client.models.generate_content(
-                            model=model,
-                            contents=contents,
-                            config=generate_content_config_text,
-                        )
-                        reply_text = f'{reply_text}\n{response.text}'
+                            response = client.models.generate_content(
+                                model=model,
+                                contents=contents,
+                                config=generate_content_config_text,
+                            )
+                        except Exception as e:
+                            print(f"Gemini API 發生錯誤: {e}")
+                            response = f"喵喵喵？腦袋打結啦 {e}"
+                        finally:
+                            reply_text = f'{reply_text}\n{response.text}'
 
                     else:
                         print(f"未知的函數呼叫: {function_call.name}")
-                        reply_text = f"未知的函數呼叫: {function_call.name}"
+                        reply_text = f"喵喵喵？未知的函數呼叫: {function_call.name}"
                 else:
                     print("No function call found in the response.")
                     print(response.text)
@@ -348,6 +403,14 @@ async def on_message(message: discord.Message):
 
                 if reply_text:
                     await send_in_chunks(message.channel, reply_text)
+                    global_contents.append(
+                        types.Content(
+                            role="model",
+                            parts=[
+                                types.Part.from_text(text=f"{str(time.strftime('%Y/%m/%d %a. %H:%M', time.localtime()))} id={message.author.id} name={message.author.name} : {message.content}")
+                            ],
+                        )
+                    )
                 else:
                     await message.channel.send("喵喵喵？我不知道該怎麼回答喵！")           
                 
@@ -408,6 +471,27 @@ async def channel_settings(interaction: discord.Interaction):
     view = SettingsMenu()
     await interaction.response.send_message("請選擇設定操作：", view=view, ephemeral=True)
 
+@bot.tree.command(name="cate整理記憶", description="整理並新增長期記憶（Owner Only）")
+async def update_memory(interaction: discord.Interaction):
+    if interaction.user.id != int(CONFIG['Your_Discord_Id']):
+        await interaction.response.send_message("噗噗～沒有權限哦～", ephemeral=True)
+        return
+    try:
+        await interaction.response.defer(thinking=True, ephemeral=True)
+        await update_long_term_memory()
+        await interaction.edit_original_response(content="長期記憶已更新！")
+    except Exception as e:
+        await interaction.followup.send(f"更新長期記憶時出錯: {e}", ephemeral=True)
+
+# 每天凌晨3點定時整理記憶
+@tasks.loop(hours=1)
+async def reload_ai_loop():
+    if (datetime.now().hour == 3):
+        try:
+            await update_long_term_memory()
+        except Exception as e:
+            print(f'整理global_contents時出錯: {e}')
+
 @bot.event
 async def on_ready():
     print(f'已登入為 {bot.user}')
@@ -422,6 +506,8 @@ async def on_ready():
         print(f'已同步 {len(synced)} 個指令')
     except Exception as e:
         print(f'同步指令時出錯: {e}')
+
+    reload_ai_loop.start()
 
 
 bot.run(TOKEN)
