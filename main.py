@@ -99,7 +99,7 @@ async def update_long_term_memory() -> None:
         print(f"\n記憶:\n{global_contents}\n")
         client = genai.Client(api_key=CONFIG['Gemini_Token'])
         response = client.models.generate_content(
-            model="gemini-2.5-flash",
+            model= CONFIG['model'] if 'model' in CONFIG else "gemini-2.5-flash",
             contents=global_contents
         )
         await send_in_chunks(channel, response.text)
@@ -345,7 +345,7 @@ async def on_message(message: discord.Message):
                 
                 # AI 回覆
                 client = genai.Client(api_key=CONFIG['Gemini_Token'])
-                model = "gemini-2.5-flash"
+                model = CONFIG['model'] if 'model' in CONFIG else "gemini-2.5-flash"
                 generate_content_config = types.GenerateContentConfig(
                     tools=[types.Tool(function_declarations=[add_important_memory_declatation])],
                     system_instruction="你是個年齡不確定的貓娘,主要用正體中文,名字是CaTe像貓並參考元素表,身高130cm體重30kg,AquaNya是維護者,已使用帳號{bot.users}接入discord聊天,你將會收到許多資訊,回覆時不需包含這些格式,只需要針對用戶所說進行簡短對話。可以將重要的事情用Tool存下來。需要呼叫用戶時用 <@id> 。",
